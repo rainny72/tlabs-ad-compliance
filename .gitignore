@@ -1,0 +1,58 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.hypothesis/
+
+# ===== Node.js =====
+node_modules/
+
+# ===== Environment & Secrets =====
+.env
+.credentials.json
+
+# ===== IDE =====
+.idea/
+.vscode/
+.claude/
+
+# ===== OS =====
+.DS_Store
+
+# ===== Project Specific =====
+/ads/
+/.kiro/
+/scripts/
+output/
+
+# ===== CDK =====
+deployment/cdk/cdk.out/
+deployment/cdk/cdk-outputs.json
+
+# ===== Frontend =====
+deployment/frontend/dist/
+deployment/frontend/.env
+
+# ===== Lambda shared_layer pip packages =====
+deployment/lambda/shared_layer/python/annotated_types/
+deployment/lambda/shared_layer/python/annotated_types-*.dist-info/
+deployment/lambda/shared_layer/python/pydantic/
+deployment/lambda/shared_layer/python/pydantic-*.dist-info/
+deployment/lambda/shared_layer/python/pydantic_core/
+deployment/lambda/shared_layer/python/pydantic_core-*.dist-info/
+deployment/lambda/shared_layer/python/typing_extensions.py
+deployment/lambda/shared_layer/python/typing_extensions-*.dist-info/
+deployment/lambda/shared_layer/python/typing_inspection/
+deployment/lambda/shared_layer/python/typing_inspection-*.dist-info/
+
+# ===== Lambda test artifacts =====
+deployment/lambda/*/.hypothesis/
+deployment/lambda/*/.pytest_cache/

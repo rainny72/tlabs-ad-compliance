@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-An automated video ad compliance review system. Analyzes video content through a single API call via TwelveLabs Pegasus 1.2 or Amazon Bedrock, generating structured compliance reports.
+An automated video ad compliance review system. Analyzes video content through a single API call via TwelveLabs Pegasus 1.2, generating structured compliance reports. An alternative Amazon Bedrock backend is also supported (see [Appendix B](#appendix-b-dual-backend-architecture)).
 
 **Live Demo:** [AWS Amplify Demo](https://main.d1mjnmpj9lc6js.amplifyapp.com/)
 
@@ -17,7 +17,8 @@ An automated video ad compliance review system. Analyzes video content through a
 1. [How Decisions Are Made](#1-how-decisions-are-made)
 2. [Why Outputs Are Trustworthy](#2-why-outputs-are-trustworthy)
 3. [How This Would Scale in a Real Ads System](#3-how-this-would-scale-in-a-real-ads-system)
-4. [Appendix: Production Implementation Example](#appendix-production-implementation-example)
+4. [Appendix A: Production Implementation Example](#appendix-a-production-implementation-example)
+5. [Appendix B: Dual Backend Architecture](#appendix-b-dual-backend-architecture)
 
 ---
 
@@ -63,23 +64,48 @@ Multiple REVIEW reasons are combined (e.g., "REVIEW: Product: OFF-BRIEF | Disclo
 
 ### 1.4 Three-Step Regional Severity Calibration
 
-A three-step calibration mechanism is applied to reflect regional regulatory differences:
+A three-step calibration mechanism is applied to reflect regional regulatory differences. The key design insight is the separation of responsibilities: the AI model is responsible for detecting what is in the video (fact extraction), while pre-researched regional policy code is responsible for determining how severe it is in each region (regulatory judgment).
 
 ![Regional Severity Calibration](docs/generated-diagrams/Regional%20Severity%20Calibration.png)
 
-**Step 1: Prompt Regional Context Injection** — `get_regional_prompt(region)` injects region-specific regulatory context into the prompt, enabling the model to recognize local regulations and make informed severity judgments. For example, East Asia + cannabis triggers a "ZERO TOLERANCE" directive.
+**Step 1: Prompt Regional Context Injection (Guide)** — `get_regional_prompt(region)` injects region-specific regulatory context into the prompt, providing the model with severity classification guidance. For example, the East Asia context includes "ZERO TOLERANCE — ANY drug reference including cannabis, CBD → severity CRITICAL." This guides the model's severity assignment, but the system does not rely on the model following this guidance perfectly — Steps 2 and 3 act as a safety net.
 
-**Step 2: Sub-rule Keyword Matching** — `_match_sub_rule()` matches violation evidence text against regional policy keywords. For example, "cannabis CBD" matches the `illegal_drugs` sub-rule in the East Asia policy (CRITICAL severity).
+**Step 2: Sub-rule Keyword Matching (Code-Level Detection)** — `_match_sub_rule()` matches the model's returned evidence text against pre-researched regional policy keywords defined in `shared/regional_policies/`. Each region's policy file contains sub-rules with specific keywords compiled from actual regulatory research (e.g., Korea MFDS, Japan Yakujiho, China NMPA). This is deterministic code-level matching — it does not depend on the model's regulatory knowledge.
 
-**Step 3: Severity Upgrade (upgrade only, never downgrade)** — `get_regional_severity()` upgrades severity when the matched sub-rule severity exceeds the model's severity. For example, if the model returns "high" but the East Asia sub-rule specifies "CRITICAL", the final severity is upgraded to CRITICAL.
+**Step 3: Severity Upgrade (Safety Net, upgrade only, never downgrade)** — `get_regional_severity()` compares the matched sub-rule's severity with the model's returned severity. If the pre-researched policy severity is higher, it upgrades. This is strictly upgrade-only — the model's severity is never lowered, because in compliance it is safer to over-flag than to miss a violation.
 
-Benefits of this approach:
+**Concrete Example — Drug Reference Video in East Asia Region**
 
-- Step 1 ensures the model understands regional context, preventing detection gaps
-- Step 2 applies precise severity through code-level sub-rule matching
-- Step 3 provides a safety net that corrects the model's underestimation via regional policy
+The video `06-mw-230-jp-stick-drugs.mp4` (a Japanese cosmetics ad containing cannabis/CBD ingredient references) demonstrates the three-step calibration in action:
 
-The Global region applies the strictest severity across all regions, ensuring that Global-safe content is safe in every market.
+| Step | What Happens | Input | Output |
+| --- | --- | --- | --- |
+| 1. Prompt Guide | East Asia context appended: "ZERO TOLERANCE... cannabis, CBD → CRITICAL" | `get_regional_prompt("east_asia")` | Model receives severity guidance |
+| 2. Model Detection | Pegasus 1.2 analyzes video, detects drug-related content in speech/text | Video multimodal analysis | `drugs_illegal: severity "high"`, evidence: "cannabis CBD hemp extract ingredient" |
+| 3a. Sub-rule Match | Evidence text matched against East Asia policy keywords | `_match_sub_rule(DRUGS_ILLEGAL, "cannabis CBD hemp extract ingredient", east_asia_policy)` | Matched sub-rule: `illegal_drugs` (keywords: "cannabis", "CBD", "大麻", "마약") |
+| 3b. Severity Upgrade | Sub-rule severity CRITICAL > model severity HIGH → upgrade | `get_regional_severity(DRUGS_ILLEGAL, "illegal_drugs", east_asia_policy)` → CRITICAL | Final severity: **CRITICAL** (upgraded from HIGH) |
+
+In this example, the model correctly detected the drug-related content (Step 2 — this is the model's strength as a video understanding model), but assigned `severity: high` instead of the East Asia-required CRITICAL. The code-level safety net (Steps 3a-3b) caught this underestimation and upgraded the severity based on pre-researched East Asia regulations where all drug references carry zero tolerance.
+
+**Same Video, Different Regions — Severity Comparison:**
+
+| Region | Model Returns | Sub-rule Match | Policy Severity | Final Severity | Decision |
+| --- | --- | --- | --- | --- | --- |
+| North America | `high` | `cannabis_cbd` | HIGH | HIGH (no change) | BLOCK |
+| Western Europe | `high` | `cannabis_cbd` | HIGH | HIGH (no change) | BLOCK |
+| East Asia | `high` | `illegal_drugs` | CRITICAL | **CRITICAL** (upgraded) | BLOCK |
+| Global | `high` | strictest across all | CRITICAL | **CRITICAL** (upgraded) | BLOCK |
+
+This demonstrates the core value of the calibration mechanism: the same model output produces different final severities depending on the region, reflecting actual regulatory differences. The model only needs to detect the content accurately — the regional severity judgment is handled by pre-researched policy code.
+
+**Why This Design — Model Detection + Code-Level Regulation:**
+
+- Pegasus 1.2 is a video understanding model optimized for multimodal content analysis (visual, speech, text). It excels at detecting what is in the video — drug references, profanity, unsafe usage, etc.
+- However, mapping detected content to region-specific regulatory severity requires domain expertise that a video understanding model may not reliably possess (e.g., "cannabis is HIGH in North America but CRITICAL in East Asia").
+- The three-step design leverages each component's strength: the model detects content (its core capability), the prompt provides severity guidance (best-effort), and the code enforces pre-researched regional regulations (guaranteed accuracy).
+- The upgrade-only constraint ensures that even if the model overestimates severity (e.g., returns CRITICAL when the region only requires HIGH), the system preserves the model's judgment — erring on the side of caution.
+
+The Global region applies `get_strictest_severity()` across all regional policies, ensuring that Global-safe content is safe in every market.
 
 ---
 
@@ -89,14 +115,16 @@ Output trustworthiness is ensured through three pillars: consistent response gen
 
 ### 2.1 API Parameter Settings for Deterministic Output
 
+The TwelveLabs Analyze API is configured with parameters optimized for compliance analysis:
+
 | Parameter | Value | Purpose |
 | --- | --- | --- |
-| `temperature` | 0.1 | Minimizes non-deterministic results for the same video |
-| `maxOutputTokens` | 4,096 | Pegasus maximum to prevent response truncation |
-| `responseFormat` | JSON Schema | Enforces structured output, eliminates free-text |
-| `stream` | false | Receives complete response in a single payload |
+| `temperature` | `0.1` | Most deterministic setting per TwelveLabs Temperature Tuning Guide |
+| `max_tokens` | `4096` | Pegasus maximum to prevent truncation |
+| `response_format` | `{type: "json_schema", json_schema: ...}` | Enforces structured output |
+| `stream` | `false` | Complete response in single payload |
 
-Temperature 0.1 is the most deterministic setting recommended by the TwelveLabs Temperature Tuning Guide for "law enforcement, reports" use cases. Compliance analysis must return identical results each time the same video is analyzed, prioritizing consistency over creativity. Additionally, the single API call design means non-determinism occurs only once, and cross-referencing across categories within a single context ensures consistent analysis results.
+The `temperature: 0.1` setting is the most deterministic option recommended by the TwelveLabs Temperature Tuning Guide for "law enforcement, reports" use cases. Compliance analysis requires the same video to produce reproducible results, making minimal non-determinism essential. The single API call design means non-determinism occurs only once, and cross-referencing across categories within a single context ensures consistent analysis results.
 
 ### 2.2 JSON Schema-Based Structured Output
 
@@ -113,20 +141,81 @@ Following this principle, `COMBINED_JSON_SCHEMA` enforces the output structure:
 
 The schema and prompt output instructions are precisely aligned so the model follows the schema while reflecting the prompt's intent.
 
-### 2.3 Consistency Through Prompt Engineering
+### 2.3 Prompt Architecture — COMBINED_PROMPT Design
 
-Eight best practices from the TwelveLabs Prompt Engineering Guide are systematically applied:
+The system uses a single unified prompt (`COMBINED_PROMPT`) that instructs the model to perform all analysis tasks in one pass. The prompt is composed of four structural layers, each serving a distinct purpose.
 
-**Role and Domain Context Setting** — Instead of a generic "content moderator," specific regulatory bodies are named (FTC, ASA, EU Cosmetics Regulation, MFDS, Yakujiho, NMPA) to activate the model's domain knowledge.
+**Layer 1: Role Definition and Severity Judgment Guide**
 
-**Explicit Severity Classification Guide** — Rather than providing only the severity enum, the meaning of each level is clearly defined:
+The prompt opens by assigning the model a specific expert role with named regulatory bodies:
 
-- `critical`: Content triggering immediate regulatory action or legal liability
-- `high`: Clear policy violation requiring content removal
-- `medium`: Borderline content requiring human review
-- `low`: Minor concern with low regulatory risk
+> "You are an expert ad compliance reviewer specializing in global beauty and cosmetics advertising regulations, including FTC (US), ASA (UK), EU Cosmetics Regulation, and East Asian standards (Korea MFDS, Japan Yakujiho, China NMPA)."
 
-**Per-Category Severity Mapping** — Expected severity for each violation type is explicitly stated in the prompt (e.g., `"FDA approved" for cosmetics -> critical`), guiding the model to return consistent severity for identical violations.
+Instead of a generic "content moderator," naming specific regulatory bodies provides the model with a structured severity judgment framework. Pegasus 1.2 is a video understanding model optimized for multimodal analysis (visual, speech, text), not a general-purpose LLM with deep regulatory knowledge. Therefore, the prompt's regulatory references serve as severity classification guides rather than activating pre-existing domain expertise. The system does not rely solely on the model's regulatory understanding — the three-step calibration mechanism (Section 1.4) ensures accurate regional compliance through code-level sub-rule matching (`_match_sub_rule()`) and severity upgrade (`get_regional_severity()`), which act as a safety net for any gaps in the model's domain knowledge.
+
+**Layer 2: Multi-Modality Analysis Instruction**
+
+The prompt explicitly requires independent analysis of all three modalities before making any judgment:
+
+> "Analyze ALL three modalities independently before making any judgment:
+> 1. VISUAL: actions, products, text overlays, subtitles
+> 2. SPEECH/AUDIO: transcribe ALL spoken words verbatim in any language
+> 3. TEXT ON SCREEN: all overlays, captions, hashtags, watermarks
+>
+> Do NOT assume a video is clean based on visuals alone. Violations often appear only in audio or text."
+
+This instruction is critical because compliance violations frequently appear in only one modality — profanity in speech, drug references in on-screen text, or unsafe usage in visual content. Without this directive, the model may default to visual-only analysis.
+
+**Layer 3: Three Output Sections with Explicit Instructions**
+
+The prompt defines three output sections that map directly to the JSON Schema:
+
+1. **Campaign Relevance** — Instructs the model to score relevance (0.0–1.0), determine if the product is on-brief, and check product visibility. These fields feed directly into Axis 2 (Product Relevance) of the evaluation system.
+
+2. **Video Description** — Requires a factual 2-5 sentence summary with verbatim transcription of all spoken dialogue (original language + English translation), all on-screen text, and any offensive language exactly as spoken. The description serves dual purposes: it provides human-readable context for reviewers, and it feeds into the keyword-based disclosure detection path (Axis 3).
+
+3. **Policy Violations** — Defines 6 categories with per-category severity mapping. Each category includes specific examples and expected severity levels:
+
+| Category | Key Severity Mappings in Prompt |
+| --- | --- |
+| `hate_harassment` | Racial slurs → critical, skin tone superiority → critical, body shaming → high |
+| `profanity_explicit` | Strong profanity (F-word, 씨발, くそ, 他妈的) → critical, mild → medium |
+| `drugs_illegal` | Illegal drug use → critical, cannabis/CBD → high (critical in East Asia), substance-derived cosmetic ingredients → high |
+| `unsafe_misleading_usage` | Unsafe application → high, misleading before/after → high |
+| `medical_cosmetic_claims` | Drug claims ("cures", "treats") → critical, "FDA approved" for cosmetics → critical, absolute claims → high |
+| `disclosure` | No disclosure at all → medium, buried disclosure → low |
+
+The per-category severity mapping is essential for consistency — it ensures the model returns the same severity for identical violations across different videos, rather than making ad-hoc judgments.
+
+**Layer 4: Regional Context Injection (Dynamic)**
+
+The base `COMBINED_PROMPT` is extended at runtime by `get_regional_prompt(region)`, which appends region-specific regulatory context from `REGIONAL_PROMPT_CONTEXT`. Four regional contexts are defined:
+
+| Region | Key Directives | Regulatory Bodies |
+| --- | --- | --- |
+| `north_america` | CBD → HIGH, "FDA approved" for cosmetics → CRITICAL, FTC disclosure rules | FTC, FDA, MoCRA |
+| `western_europe` | ASA strictest disclosure rules ("#sponsored" is inadequate → HIGH), retouched before/after banned | ASA, ARPP, EU Cosmetics Reg |
+| `east_asia` | ZERO TOLERANCE for any drug reference → CRITICAL, mild profanity → HIGH, absolute claims → CRITICAL | Korea MFDS, Japan Yakujiho, China NMPA |
+| `global` | No additional context (base prompt applies strictest defaults) | — |
+
+The regional context is appended as a `## REGIONAL CONTEXT` section, not replacing the base prompt. This means the model always has the full base knowledge plus region-specific overrides. For example, the East Asia context explicitly states "ANY drug reference including cannabis, CBD, marijuana → severity CRITICAL (not high)" — overriding the base prompt's default of HIGH for cannabis.
+
+**API Prompt Token Limit and Design Constraint**
+
+The TwelveLabs Analyze API (`POST /v1.3/analyze`) and Amazon Bedrock `invoke_model` both impose a maximum prompt length of 2,000 tokens (`inputPrompt` / `prompt` parameter). This constraint directly shaped the prompt design — all 6 policy categories, severity mappings, multi-modality instructions, and output format specifications must fit within this budget.
+
+| Prompt Variant | Estimated Tokens | Budget Usage |
+| --- | --- | --- |
+| Global (base only) | ~914 | 46% |
+| North America | ~1,088 | 54% |
+| Western Europe | ~1,085 | 54% |
+| East Asia (longest) | ~1,137 | 57% |
+
+The prompt was designed following the [TwelveLabs Prompt Engineering Guide](https://docs.twelvelabs.io/docs/prompt-engineering) best practices: role definition with specific context, explicit output format specification, concise and specific instructions, and temperature tuning for deterministic compliance output. The per-category severity mappings are kept concise (arrow notation: `"FDA approved" for cosmetics -> critical`) rather than verbose explanations, specifically to stay within the 2,000-token budget while maximizing the information density delivered to the model.
+
+**Why This Prompt Structure Works**
+
+The four-layer design ensures: (1) the model receives structured severity judgment guidance through named regulatory contexts, (2) it analyzes all modalities rather than defaulting to visual-only, (3) it produces consistent severity assignments through explicit per-category mapping, and (4) it respects regional regulatory differences through dynamic context injection. The prompt and JSON Schema are precisely aligned — the schema enforces structure while the prompt provides the judgment criteria. Importantly, the system does not depend on the model's inherent regulatory knowledge — the prompt guides severity classification, while code-level calibration (Section 1.4) guarantees accurate regional enforcement.
 
 ### 2.4 Multi-Layer Verification Mechanisms
 
@@ -134,7 +223,7 @@ Model output trustworthiness is further verified at the code level:
 
 **Truncation Detection** — The API response's `finishReason` field is checked; if `"length"`, a warning is raised that the response was truncated. Truncated responses may contain incomplete JSON and are immediately flagged.
 
-**Regional Policy Safety Net** — Even if the model underestimates regional regulations, code-level `_match_sub_rule()` + `get_regional_severity()` matches evidence text against regional policy keywords and upgrades severity. This calibration is upgrade-only (never downgrade), preventing false negatives.
+**Regional Policy Safety Net** — Even if the model underestimates regional regulations (e.g., returning `severity: high` for cannabis in East Asia instead of CRITICAL), code-level `_match_sub_rule()` + `get_regional_severity()` matches evidence text against pre-researched regional policy keywords and upgrades severity. This calibration is upgrade-only (never downgrade), preventing false negatives. The regional policies in `shared/regional_policies/` are compiled from actual regulatory research (Korea MFDS, Japan Yakujiho, China NMPA, FTC, ASA, EU Cosmetics Regulation), ensuring that the system's regulatory accuracy does not depend on the model's domain knowledge.
 
 **Multi-Path Disclosure Detection** — Disclosure detection does not rely on a single method but uses three paths:
 
@@ -211,10 +300,35 @@ The key advantage of this serverless architecture is automatic scaling up/down b
 
 ---
 
-## Appendix: Production Implementation Example
+## Appendix A: Production Implementation Example
 
 > A production deployment was implemented to validate the design thinking. For details on system architecture, security design, and CDK infrastructure, see the document below.
 
 Detailed documentation: [Application Architecture](docs/application_architecture.md) — Includes dual deployment structure (Streamlit/Amplify), Dispatcher/Worker async pattern, CDK infrastructure stacks, Lambda function structure, and security design (Cognito authentication, S3 public access blocking, least privilege principle).
+
+---
+
+## Appendix B: Dual Backend Architecture
+
+The system supports two interchangeable backends for video analysis. Users can switch between them via the Settings page, and the Worker Lambda routes to the selected backend at runtime. Both backends share the same prompt (`get_regional_prompt(region)`), JSON schema (`COMBINED_JSON_SCHEMA`), and decision engine (`make_split_decision`), ensuring identical evaluation logic regardless of which backend processes the video.
+
+| Aspect | TwelveLabs Direct API | Amazon Bedrock |
+| --- | --- | --- |
+| Endpoint | `POST /v1.3/analyze` | `invoke_model` (bedrock-runtime) |
+| Model | Pegasus 1.2 (hosted by TwelveLabs) | `twelvelabs.pegasus-1-2-v1:0` (AWS Marketplace) |
+| Authentication | API Key (`x-api-key` header) | AWS IAM (Signature V4) |
+| Video Input | Indexed asset (upload → index → analyze) | Base64 or S3 URI |
+| Max Video Size | Managed by TwelveLabs indexing pipeline | 25 MB (base64) / 2 GB (S3 URI) |
+| Temperature | `0.1` | `0.1` |
+| Best For | TwelveLabs-native workflows, rapid prototyping | Enterprise AWS environments, IAM-governed access |
+
+**TwelveLabs Direct API Pipeline (4 Steps):**
+
+1. **Index Creation** — `POST /v1.3/indexes` creates a named index (`ad-compliance-analysis`) with `pegasus1.2` model and `["visual", "audio"]` modalities.
+2. **Asset Upload** — `POST /v1.3/assets` uploads the video via multipart/form-data. Polls until `"ready"`.
+3. **Asset Indexing** — `POST /v1.3/indexes/{index_id}/indexed-assets` links the asset to the index. Polls until `"ready"`.
+4. **Analysis** — `POST /v1.3/analyze` sends the prompt, JSON schema, and parameters. This single call produces the structured compliance report.
+
+**Amazon Bedrock Pipeline (Single Step):** Bedrock simplifies to a single `invoke_model` call. The video is passed as base64 (≤25 MB) or S3 URI (≤2 GB). No pre-indexing required.
 
 ---

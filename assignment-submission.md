@@ -259,31 +259,31 @@ The current system's core design principles naturally support large-scale expans
 
 ![Production Architecture](docs/generated-diagrams/Production%20Architecture.png)
 
-### 3.3 Tiered Processing Strategy
+### 3.3 Fully Automated Decision Pipeline
 
-In real ad systems, not all content is treated equally. Processing is differentiated based on the decision result:
+Every video submitted to the system receives a fully automated decision — APPROVE, REVIEW, or BLOCK — with structured evidence. No human intervention is required in the decision pipeline itself.
 
-| Tier | Decision | Processing | Expected Ratio |
-| --- | --- | --- | --- |
-| Auto-approve | APPROVE (high confidence) | Automatic approval, no human review needed | 60-70% |
-| Auto-block | BLOCK (CRITICAL severity) | Automatic block, advertiser notification | 5-10% |
-| Human review | REVIEW | Routed to reviewer queue | 20-35% |
+| Decision | Automated Action | Evidence Provided |
+| --- | --- | --- |
+| APPROVE | Cleared for promotion automatically | All three axes passed |
+| REVIEW | Flagged with specific concerns and evidence | Violation category, severity, modality, timestamps |
+| BLOCK | Rejected automatically with detailed reasoning | Critical/high severity violations with exact evidence |
 
-This tiered classification reduces the human reviewer burden by 60-70% while immediately blocking dangerous content.
+All three outcomes are produced by the system automatically. The REVIEW decision is not a fallback for uncertainty — it is an intentional design choice where the system identifies borderline cases (e.g., MEDIUM severity, product BORDERLINE, disclosure MISSING) and provides the precise reasons and evidence. This fulfills the requirement for "clear explanations for any blocked or reviewed ads."
 
-### 3.4 Quality Control and Human-in-the-Loop
+### 3.4 Continuous Quality Improvement
 
-The system's core goal is to automate the Ads Compliance team's review process. To handle hundreds of thousands of ads per day, AI must perform first-pass decisions automatically and provide clear decision rationale. Human-in-the-Loop serves not as a full review but as a sampling-based audit to continuously verify and improve model quality.
+To maintain and improve automated decision quality at scale, the system supports feedback loops that do not interrupt the automated pipeline:
 
 ![Human-in-the-Loop Quality Control](docs/generated-diagrams/Human-in-the-Loop%20Quality%20Control.png)
 
-**Automated Decision + Decision Rationale** — For BLOCK/REVIEW decisions, the violation category, severity, and evidence (detection modality and specific content) are provided in a structured format. This fulfills the "Clear explanations for any blocked or reviewed ads" requirement, allowing advertisers to immediately see the reason for blocking/review.
+**Structured Evidence for Every Decision** — Every APPROVE, REVIEW, and BLOCK decision includes the violation category, severity, detection modality, and specific evidence in a structured format. This makes decisions explainable and auditable without requiring additional analysis.
 
-**Sampling-Based Quality Audit** — A percentage of all decisions is randomly sampled for human auditor verification. False positive and false negative rates are measured, and when accuracy for a specific category falls below the threshold, prompts or regional policies are adjusted.
+**Sampling-Based Accuracy Measurement** — A percentage of automated decisions can be randomly sampled for verification. False positive and false negative rates are measured per category, and when accuracy drops below a threshold, prompts or regional policies are adjusted — improving future automated decisions.
 
-**Drift Detection** — Changes in decision distribution (APPROVE/REVIEW/BLOCK ratios) over time are tracked. Sudden distribution shifts indicate model behavior changes or new content types, signaling when policy adjustments are needed.
+**Drift Detection** — Changes in decision distribution (APPROVE/REVIEW/BLOCK ratios) over time are tracked. Sudden distribution shifts signal model behavior changes or new content types, triggering policy adjustments.
 
-**Regional Policy Updates** — When regulations change, only policy files need to be updated for immediate effect. Extending code-based policy management (`shared/regional_policies/`) to a Policy DB + Admin UI would allow compliance officers to manage policies directly.
+**Policy Updates Without Retraining** — When regulations change, only policy files in `shared/regional_policies/` need to be updated for immediate effect. Extending this to a Policy DB + Admin UI would allow compliance officers to manage policies directly, with changes taking effect on the next video processed.
 
 ### 3.5 Serverless Architecture-Based Scaling Direction
 

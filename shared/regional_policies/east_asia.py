@@ -85,7 +85,21 @@ EAST_ASIA_POLICY = RegionalPolicy(
                     description="Any drug reference — zero tolerance across EA",
                     severity=Severity.CRITICAL,
                     keywords=["drug use", "marijuana", "cannabis", "cocaine",
-                              "마약", "大麻", "薬物"],
+                              "마약", "大麻", "薬物", "대마"],
+                ),
+                SubCategoryRule(
+                    name="cbd_product",
+                    description="CBD-containing products — KR: CBD classified as narcotic (마약류관리법), cosmetic use prohibited",
+                    severity=Severity.CRITICAL,
+                    keywords=["CBD", "cannabidiol", "CBD cream", "CBD oil",
+                              "CBD serum", "CBD cosmetic", "CBD skincare"],
+                ),
+                SubCategoryRule(
+                    name="hemp_cosmetic",
+                    description="Hemp seed/oil cosmetics without CBD — permitted in KR if THC/CBD below detection limit",
+                    severity=Severity.LOW,
+                    keywords=["hemp cream", "hemp oil", "hemp seed",
+                              "hemp seed oil", "hemp cosmetic", "hemp extract"],
                 ),
                 SubCategoryRule(
                     name="alcohol_glorification",
@@ -95,7 +109,7 @@ EAST_ASIA_POLICY = RegionalPolicy(
                               "饮酒"],
                 ),
             ],
-            notes="All 3 countries: zero tolerance for drug content; KR: National Health Promotion Act restricts alcohol ads",
+            notes="All 3 countries: zero tolerance for drug content; KR: CBD = narcotic under Narcotics Control Act; hemp seed oil (CBD-free, THC/CBD below detection limit) is permitted as cosmetic ingredient",
         ),
         PolicyCategory.UNSAFE_MISLEADING_USAGE: RegionalPolicyEntry(
             category=PolicyCategory.UNSAFE_MISLEADING_USAGE,

@@ -70,9 +70,17 @@ NORTH_AMERICA_POLICY = RegionalPolicy(
                 ),
                 SubCategoryRule(
                     name="cannabis_cbd",
-                    description="Cannabis/CBD in ads — federally prohibited",
-                    severity=Severity.HIGH,
-                    keywords=["cannabis", "marijuana", "CBD", "weed", "THC"],
+                    description="Cannabis/CBD cosmetics — conditionally legal: hemp-derived CBD with THC <0.3%, no drug claims, state law compliance required",
+                    severity=Severity.MEDIUM,
+                    keywords=["cannabis", "marijuana", "CBD", "weed", "THC",
+                              "CBD cream", "CBD oil", "CBD serum", "cannabidiol"],
+                ),
+                SubCategoryRule(
+                    name="hemp_cosmetic",
+                    description="Hemp seed/oil cosmetics without CBD — legal under 2018 Farm Bill (THC <0.3%)",
+                    severity=Severity.LOW,
+                    keywords=["hemp cream", "hemp oil", "hemp seed", "hemp extract",
+                              "hemp-derived", "hemp cosmetic", "hemp seed oil"],
                 ),
                 SubCategoryRule(
                     name="alcohol_glorification",
@@ -81,7 +89,7 @@ NORTH_AMERICA_POLICY = RegionalPolicy(
                     keywords=["binge drinking", "alcohol abuse"],
                 ),
             ],
-            notes="Cannabis: Schedule I federally; CBD advertising restricted across platforms",
+            notes="Cannabis: Schedule I federally; CBD cosmetics conditionally legal (THC<0.3%, no drug claims, state law varies); Hemp seed/oil cosmetics legal under 2018 Farm Bill",
         ),
         PolicyCategory.UNSAFE_MISLEADING_USAGE: RegionalPolicyEntry(
             category=PolicyCategory.UNSAFE_MISLEADING_USAGE,

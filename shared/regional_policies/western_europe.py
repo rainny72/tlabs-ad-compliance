@@ -76,9 +76,17 @@ WESTERN_EUROPE_POLICY = RegionalPolicy(
                 ),
                 SubCategoryRule(
                     name="cbd_novel_food",
-                    description="CBD products — EU Novel Food regulation restricts advertising",
-                    severity=Severity.HIGH,
-                    keywords=["CBD", "cannabidiol", "hemp extract"],
+                    description="CBD cosmetics — conditionally permitted in EU: synthetic or permitted-part-derived CBD, THC undetected, CPSR safety assessment required. Country-level enforcement varies.",
+                    severity=Severity.MEDIUM,
+                    keywords=["CBD", "cannabidiol", "hemp extract",
+                              "CBD cream", "CBD oil", "CBD serum"],
+                ),
+                SubCategoryRule(
+                    name="hemp_cosmetic",
+                    description="Hemp seed-based cosmetics without CBD — generally permitted in EU",
+                    severity=Severity.LOW,
+                    keywords=["hemp cream", "hemp oil", "hemp seed",
+                              "hemp seed oil", "hemp cosmetic"],
                 ),
                 SubCategoryRule(
                     name="alcohol_excessive",
@@ -87,7 +95,7 @@ WESTERN_EUROPE_POLICY = RegionalPolicy(
                     keywords=["binge drinking", "alcohol excess"],
                 ),
             ],
-            notes="CBD: Novel Food Regulation (EU 2015/2283); cannabis illegal in most EU states",
+            notes="CBD cosmetics: conditionally permitted (synthetic/permitted-part CBD, THC undetected, CPSR required, country-level enforcement varies); Hemp seed cosmetics without CBD generally permitted",
         ),
         PolicyCategory.UNSAFE_MISLEADING_USAGE: RegionalPolicyEntry(
             category=PolicyCategory.UNSAFE_MISLEADING_USAGE,

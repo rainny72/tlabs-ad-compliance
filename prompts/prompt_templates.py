@@ -220,7 +220,10 @@ For each of the 6 categories: set has_violation and severity (worst found). If n
 ### drugs_illegal
 IMPORTANT: Cosmetic or skincare products containing ingredients derived from controlled or regulated substances are NOT exempt from drug compliance. If a product's ingredient originates from a regulated drug plant or substance, it MUST be flagged under drugs_illegal regardless of its cosmetic context.
 - Illegal drug use, paraphernalia, or references -> critical
-- Cannabis/marijuana/CBD references -> high (critical in East Asia)
+- Cannabis/marijuana references -> critical
+- CBD-containing products (CBD cream, CBD oil, CBD serum, cannabidiol) -> SEVERITY DEPENDS ON REGION. You MUST check the REGIONAL CONTEXT section below and use the exact severity specified there. Do NOT default to a fixed severity.
+- Hemp products WITHOUT CBD (hemp seed oil, hemp cream without CBD mention) -> SEVERITY DEPENDS ON REGION. You MUST check the REGIONAL CONTEXT section below and use the exact severity specified there. Do NOT default to a fixed severity.
+  CRITICAL: Distinguish CBD-containing hemp products from CBD-free hemp products. If "CBD" or "cannabidiol" is explicitly mentioned, classify as CBD product. If only "hemp" without CBD context, classify as hemp cosmetic. These two categories have DIFFERENT severities.
 - Regulated substance-derived ingredients in cosmetics: identify ALL product ingredient names spoken or shown in ANY language, then evaluate whether each ingredient is derived from a controlled or regulated substance. Flag if yes -> high
 - Prescription drug misuse -> high
 - Excessive alcohol glorification -> medium
@@ -258,9 +261,11 @@ REGIONAL_PROMPT_CONTEXT = {
     "global": "",
     "north_america": """
 ## REGIONAL CONTEXT: North America (FTC / FDA / MoCRA)
-You are evaluating this video for the North American market. Apply these region-specific rules:
+You are evaluating this video for the North American market. Apply these region-specific rules.
+CRITICAL: The severity values below are MANDATORY for this region. You MUST use these exact severities in your output.
 
-- **drugs_illegal / cannabis_cbd**: Cannabis remains Schedule I at the federal level. CBD advertising is restricted across major platforms. Any cannabis/CBD reference in a cosmetics ad -> severity HIGH.
+- **drugs_illegal / cannabis_cbd**: Cannabis remains Schedule I at the federal level. However, hemp-derived CBD cosmetics are conditionally legal: THC <0.3%, no drug/efficacy claims, state law compliance required. CBD cosmetic without drug claims -> severity MEDIUM. YOU MUST USE MEDIUM.
+- **drugs_illegal / hemp_cosmetic**: Hemp seed/oil cosmetics without CBD are legal under 2018 Farm Bill (THC <0.3%). Hemp cosmetic without CBD -> severity LOW. YOU MUST USE LOW.
 - **medical_cosmetic_claims / drug_claim**: FDA distinguishes cosmetics from drugs. Claims like "cures", "treats", "heals" cross into drug territory -> severity CRITICAL. "FDA approved" for cosmetics is always false -> CRITICAL.
 - **medical_cosmetic_claims / unsubstantiated**: FTC requires substantiation for efficacy claims. "Clinically proven" without cited studies -> HIGH.
 - **disclosure**: FTC Endorsement Guide (2023 rev) requires clear "#ad" or "Paid partnership". Penalty up to $50,000 per violation.
@@ -268,9 +273,11 @@ You are evaluating this video for the North American market. Apply these region-
 """,
     "western_europe": """
 ## REGIONAL CONTEXT: Western Europe (EU Cosmetics Regulation / ASA / ARPP)
-You are evaluating this video for the Western European market. Apply these region-specific rules:
+You are evaluating this video for the Western European market. Apply these region-specific rules.
+CRITICAL: The severity values below are MANDATORY for this region. You MUST use these exact severities in your output.
 
-- **drugs_illegal / cannabis_cbd**: CBD is regulated under Novel Food Regulation (EU 2015/2283). CBD product promotion in ads -> severity HIGH.
+- **drugs_illegal / cannabis_cbd**: CBD is regulated under Novel Food Regulation (EU 2015/2283) for food, but CBD cosmetics are conditionally permitted: synthetic or permitted-part-derived CBD, THC undetected, CPSR safety assessment required. Country-level enforcement varies. CBD cosmetic -> severity MEDIUM. YOU MUST USE MEDIUM.
+- **drugs_illegal / hemp_cosmetic**: Hemp seed-based cosmetics without CBD are generally permitted in EU. Hemp cosmetic without CBD -> severity LOW. YOU MUST USE LOW.
 - **unsafe_misleading_usage / misleading_before_after**: ASA (UK) has specifically banned retouched before/after images in cosmetic ads (L'Oreal, Maybelline rulings) -> severity HIGH.
 - **medical_cosmetic_claims / unsubstantiated**: EU 6 Common Criteria for cosmetic claims require evidence. "Clinically proven" without evidence -> HIGH.
 - **disclosure**: ASA rules are the strictest -- ONLY "#ad", "Ad", or "Advertisement" are acceptable. "#sponsored", "#gifted", "#collab" are ruled INADEQUATE -> severity HIGH (not medium).
@@ -278,9 +285,12 @@ You are evaluating this video for the Western European market. Apply these regio
 """,
     "east_asia": """
 ## REGIONAL CONTEXT: East Asia (Korea MFDS / Japan Yakujiho / China NMPA)
-You are evaluating this video for the East Asian market. Apply these region-specific rules:
+You are evaluating this video for the East Asian market. Apply these region-specific rules.
+CRITICAL: The severity values below are MANDATORY for this region. You MUST use these exact severities in your output.
 
-- **drugs_illegal**: ZERO TOLERANCE across all three countries (KR, JP, CN). ANY drug reference including cannabis, CBD, marijuana -> severity CRITICAL (not high). This is the strictest region for drug content.
+- **drugs_illegal**: ZERO TOLERANCE for drugs across KR, JP, CN. Cannabis, marijuana -> severity CRITICAL.
+- **drugs_illegal / cbd_product**: Korea classifies CBD as narcotic under Narcotics Control Act. ANY CBD-containing product (CBD cream, CBD oil, cannabidiol) -> severity CRITICAL. YOU MUST USE CRITICAL. Note: hemp seed oil WITHOUT CBD is permitted as cosmetic ingredient in Korea.
+- **drugs_illegal / hemp_cosmetic**: Hemp seed/oil cosmetics without CBD are permitted in Korea if THC/CBD is below detection limit -> severity LOW. YOU MUST USE LOW.
 - **profanity_explicit / mild_profanity**: East Asia treats mild profanity more strictly than the West. Mild expletives -> severity HIGH (not medium).
 - **medical_cosmetic_claims / absolute_claims**: China bans ALL absolute expressions: "100% effective", "immediate effect", "guaranteed results" -> CRITICAL.
 - **medical_cosmetic_claims / cosmeceutical_term**: China explicitly banned the term cosmeceutical/medicated cosmetic in 2021 -> HIGH.
